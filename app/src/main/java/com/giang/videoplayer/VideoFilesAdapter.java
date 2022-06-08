@@ -12,6 +12,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.provider.MediaStore;
+import android.text.TextUtils;
 import android.util.Log;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -82,6 +83,10 @@ public class VideoFilesAdapter extends RecyclerView.Adapter<VideoFilesAdapter.Vi
                     editText.requestFocus();
 
                     dialog.setPositiveButton("OK", (dialogInterface, i) -> {
+                        if(TextUtils.isEmpty(editText.getText().toString())){
+                            Toast.makeText(context, "Can't rename empty file", Toast.LENGTH_SHORT).show();
+                            return;
+                        }
                         String onlyPath = file.getParentFile().getAbsolutePath();
                         String ext = file.getAbsolutePath();
                         ext = ext.substring(ext.lastIndexOf("."));
@@ -237,5 +242,12 @@ public class VideoFilesAdapter extends RecyclerView.Adapter<VideoFilesAdapter.Vi
             videoTime = String.format("%02d:%02d", minutes, seconds);
         }
         return videoTime;
+    }
+
+    @SuppressLint("NotifyDataSetChanged")
+    void updateVideoFiles(ArrayList<MediaFiles> files){
+        videos = new ArrayList<>();
+        videos.addAll(files);
+        notifyDataSetChanged();
     }
 }

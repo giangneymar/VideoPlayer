@@ -7,17 +7,24 @@
     tools:context=".VideoPlayerActivity">
 
     <com.google.android.exoplayer2.ui.PlayerView
-        android:layout_width="match_parent"
         android:id="@+id/exoplayerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:background="@color/black"
-        app:hide_on_touch="true"
-        app:resize_mode="fit"
-        app:player_layout_id="@layout/exo_play_view"
-        app:shutter_background_color="@color/black"
-        app:use_controller="true"
         app:controller_layout_id="@layout/custom_playback_view"
+        app:hide_on_touch="true"
+        app:player_layout_id="@layout/exo_play_view"
+        app:resize_mode="fit"
         app:show_timeout="4000"
+        app:shutter_background_color="@color/black"
         app:surface_type="surface_view"
-        android:layout_height="match_parent"/>
+        app:use_controller="true" />
+
+    <View
+        android:id="@+id/nightMode"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#74000000"
+        android:visibility="gone" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>
