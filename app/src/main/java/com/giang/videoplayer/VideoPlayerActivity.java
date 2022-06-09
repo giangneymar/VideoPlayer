@@ -1,10 +1,19 @@
 package com.giang.videoplayer;
 
 import android.annotation.SuppressLint;
+import android.app.PictureInPictureParams;
+import android.content.DialogInterface;
+import android.content.Intent;
 import android.content.pm.ActivityInfo;
 import android.content.res.Configuration;
+import android.graphics.Bitmap;
+import android.media.MediaMetadataRetriever;
+import android.media.audiofx.AudioEffect;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
+import android.util.Log;
+import android.util.Rational;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowManager;
@@ -13,16 +22,20 @@ import android.widget.RelativeLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.RequiresApi;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.developer.filepicker.model.DialogProperties;
+import com.developer.filepicker.view.FilePickerDialog;
 import com.google.android.exoplayer2.C;
 import com.google.android.exoplayer2.MediaItem;
 import com.google.android.exoplayer2.PlaybackException;
+import com.google.android.exoplayer2.PlaybackParameters;
 import com.google.android.exoplayer2.Player;
 import com.google.android.exoplayer2.SimpleExoPlayer;
-import com.google.android.exoplayer2.mediacodec.MediaCodecAdapter;
 import com.google.android.exoplayer2.source.ConcatenatingMediaSource;
 import com.google.android.exoplayer2.source.MediaSource;
 import com.google.android.exoplayer2.source.ProgressiveMediaSource;
@@ -42,7 +55,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
     private String videoTitle;
     private ArrayList<MediaFiles> videoFiles;
     private TextView title;
-    private ImageView imgNext, imgPrev, videoBack, lock, unlock, scaling;
+    private ImageView imgNext, imgPrev, videoBack, lock, unlock, scaling, videoList;
     private RelativeLayout root;
     private ConcatenatingMediaSource concatenatingMediaSource;
     private ControlsMode controlsMode;
@@ -53,6 +66,13 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
     private View nightMode;
     boolean dark = false;
     boolean mute = false;
+    private PlaybackParameters parameters;
+    private float speed;
+    private DialogProperties dialogProperties;
+    private FilePickerDialog filePickerDialog;
+    private VideoFilesAdapter videoFilesAdapter;
+    private PictureInPictureParams.Builder pip;
+    private boolean isCrossChecked;
 
     public enum ControlsMode {
         LOCK, FULLSCREEN
@@ -82,6 +102,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
         }
         playerView.setPlayer(player);
         playerView.setKeepScreenOn(true);
+        player.setPlaybackParameters(parameters);
         player.prepare(concatenatingMediaSource);
         player.seekTo(position, C.TIME_UNSET);
         playError();
@@ -97,6 +118,27 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
         player.setPlayWhenReady(true);
     }
 
+    private void screenOrientation() {
+        try {
+            MediaMetadataRetriever retriever = new MediaMetadataRetriever();
+            Bitmap bitmap;
+            String path = videoFiles.get(position).getPath();
+            Uri uri = Uri.parse(path);
+            retriever.setDataSource(this, uri);
+            bitmap = retriever.getFrameAtTime();
+
+            int videoWidth = bitmap.getWidth();
+            int videoHeight = bitmap.getHeight();
+            if (videoWidth > videoHeight) {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+            } else {
+                setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
     private void init() {
         playerView = findViewById(R.id.exoplayerView);
         videoFiles = new ArrayList<>();
@@ -104,6 +146,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
         position = getIntent().getIntExtra("position", 1);
         videoTitle = getIntent().getStringExtra("video_title");
         videoFiles = getIntent().getExtras().getParcelableArrayList("videos");
+        screenOrientation();
 
         title = findViewById(R.id.videoTitle);
         imgNext = findViewById(R.id.exo_next);
@@ -114,6 +157,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
         videoBack = findViewById(R.id.videoBack);
         scaling = findViewById(R.id.scaling);
         nightMode = findViewById(R.id.nightMode);
+        videoList = findViewById(R.id.videoList);
 
         imgPrev.setOnClickListener(this);
         imgNext.setOnClickListener(this);
@@ -121,11 +165,23 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
         lock.setOnClickListener(this);
         unlock.setOnClickListener(this);
         scaling.setOnClickListener(firstListener);
+        videoList.setOnClickListener(this);
+
+        dialogProperties = new DialogProperties();
+        filePickerDialog = new FilePickerDialog(VideoPlayerActivity.this);
+        filePickerDialog.setTitle("Select a Subtitle File");
+        filePickerDialog.setPositiveBtnName("OK");
+        filePickerDialog.setNegativeBtnName("Cancel");
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            pip = new PictureInPictureParams.Builder();
+        }
 
         iconModelsList = new ArrayList<>();
         iconModelsList.add(new IconModel(R.drawable.ic_right, ""));
         iconModelsList.add(new IconModel(R.drawable.ic_night, "Night"));
-        iconModelsList.add(new IconModel(R.drawable.ic_volume_off, "Mute"));
+        iconModelsList.add(new IconModel(R.drawable.ic_pip, "Popup"));
+        iconModelsList.add(new IconModel(R.drawable.ic_equalizer, "Equalizer"));
         iconModelsList.add(new IconModel(R.drawable.ic_rotation, "Rotate"));
 
         recyclerViewIcons = findViewById(R.id.recyclerviewIcon);
@@ -142,19 +198,20 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
                 if (position == 0) {
                     if (expand) {
                         iconModelsList.clear();
+                        iconModelsList = new ArrayList<>();
                         iconModelsList.add(new IconModel(R.drawable.ic_right, ""));
                         iconModelsList.add(new IconModel(R.drawable.ic_night, "Night"));
-                        iconModelsList.add(new IconModel(R.drawable.ic_volume_off, "Mute"));
+                        iconModelsList.add(new IconModel(R.drawable.ic_pip, "Popup"));
+                        iconModelsList.add(new IconModel(R.drawable.ic_equalizer, "Equalizer"));
                         iconModelsList.add(new IconModel(R.drawable.ic_rotation, "Rotate"));
                         adapter.notifyDataSetChanged();
                         expand = false;
                     } else {
-                        if (iconModelsList.size() == 4) {
+                        if (iconModelsList.size() == 5) {
+                            iconModelsList.add(new IconModel(R.drawable.ic_volume_off, "Mute"));
                             iconModelsList.add(new IconModel(R.drawable.ic_volume, "Volume"));
                             iconModelsList.add(new IconModel(R.drawable.ic_brightness, "Brightness"));
-                            iconModelsList.add(new IconModel(R.drawable.ic_equalizer, "Equalizer"));
                             iconModelsList.add(new IconModel(R.drawable.ic_speed, "Speed"));
-                            iconModelsList.add(new IconModel(R.drawable.ic_subtitles, "Subtitles"));
                         }
                         iconModelsList.set(position, new IconModel(R.drawable.ic_left, ""));
                         adapter.notifyDataSetChanged();
@@ -163,6 +220,7 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
                 }
                 if (position == 1) {
                     if (dark) {
+                        //night
                         nightMode.setVisibility(View.GONE);
                         iconModelsList.set(position, new IconModel(R.drawable.ic_night, "Night"));
                         adapter.notifyDataSetChanged();
@@ -175,6 +233,37 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
                     }
                 }
                 if (position == 2) {
+                    //popup
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                        Rational aspectRatio = new Rational(16, 9);
+                        pip.setAspectRatio(aspectRatio);
+                        enterPictureInPictureMode(pip.build());
+                    } else {
+                        Log.e("aaa", "yes");
+                    }
+                }
+                if (position == 3) {
+                    //equalizer
+                    Intent intent = new Intent(AudioEffect.ACTION_DISPLAY_AUDIO_EFFECT_CONTROL_PANEL);
+                    if ((intent.resolveActivity(getPackageManager()) != null)) {
+                        startActivityForResult(intent, 123);
+                    } else {
+                        Toast.makeText(VideoPlayerActivity.this, "No Equalizer Found", Toast.LENGTH_SHORT).show();
+                        adapter.notifyDataSetChanged();
+                    }
+                }
+                if (position == 4) {
+                    //rotate
+                    if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
+                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
+                        adapter.notifyDataSetChanged();
+                    } else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
+                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
+                        adapter.notifyDataSetChanged();
+                    }
+                }
+                if (position == 5) {
+                    //mute
                     if (mute) {
                         player.setVolume(100);
                         iconModelsList.set(position, new IconModel(R.drawable.ic_volume_off, "Mute"));
@@ -187,19 +276,60 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
                         mute = true;
                     }
                 }
-                if (position == 3) {
-                    if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_PORTRAIT) {
-                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-                        adapter.notifyDataSetChanged();
-                    } else if (getResources().getConfiguration().orientation == Configuration.ORIENTATION_LANDSCAPE) {
-                        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
-                        adapter.notifyDataSetChanged();
-                    }
-                }
-                if(position==4){
+                if (position == 6) {
+                    //volume
                     VolumeDialog dialog = new VolumeDialog();
-                    dialog.show(getSupportFragmentManager(),"dialog");
+                    dialog.show(getSupportFragmentManager(), "dialog");
                     adapter.notifyDataSetChanged();
+                }
+                if (position == 7) {
+                    //brightness
+                    BrightnessDialog dialog = new BrightnessDialog();
+                    dialog.show(getSupportFragmentManager(), "dialog");
+                    adapter.notifyDataSetChanged();
+                }
+                if (position == 8) {
+                    //speed
+                    AlertDialog.Builder dialog = new AlertDialog.Builder(VideoPlayerActivity.this);
+                    dialog.setTitle("Select Playback Speed").setPositiveButton("OK", null);
+                    String[] items = {"0.5x", "1x Normal Speed", "1.25x", "1.5x", "2x"};
+                    int checkItem = -1;
+                    dialog.setSingleChoiceItems(items, checkItem, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialogInterface, int i) {
+                            switch (i) {
+                                case 0:
+                                    speed = 0.5f;
+                                    parameters = new PlaybackParameters(speed);
+                                    player.setPlaybackParameters(parameters);
+                                    break;
+                                case 1:
+                                    speed = 1f;
+                                    parameters = new PlaybackParameters(speed);
+                                    player.setPlaybackParameters(parameters);
+                                    break;
+                                case 2:
+                                    speed = 1.25f;
+                                    parameters = new PlaybackParameters(speed);
+                                    player.setPlaybackParameters(parameters);
+                                    break;
+                                case 3:
+                                    speed = 1.5f;
+                                    parameters = new PlaybackParameters(speed);
+                                    player.setPlaybackParameters(parameters);
+                                    break;
+                                case 4:
+                                    speed = 2f;
+                                    parameters = new PlaybackParameters(speed);
+                                    player.setPlaybackParameters(parameters);
+                                    break;
+                                default:
+                                    break;
+                            }
+                        }
+                    });
+                    AlertDialog alert = dialog.create();
+                    alert.show();
                 }
             }
         });
@@ -213,11 +343,18 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
         }
     }
 
+    @RequiresApi(api = Build.VERSION_CODES.N)
     @Override
     protected void onPause() {
         super.onPause();
         player.setPlayWhenReady(false);
         player.getPlaybackState();
+        if (isInPictureInPictureMode()) {
+            player.setPlayWhenReady(true);
+        } else {
+            player.setPlayWhenReady(false);
+            player.getPlaybackState();
+        }
     }
 
     @Override
@@ -249,6 +386,10 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
                     player.release();
                 }
                 finish();
+                break;
+            case R.id.videoList:
+                PlayListDialog dialog = new PlayListDialog(videoFiles, videoFilesAdapter);
+                dialog.show(getSupportFragmentManager(), dialog.getTag());
                 break;
             case R.id.lock:
                 controlsMode = ControlsMode.FULLSCREEN;
@@ -320,4 +461,24 @@ public class VideoPlayerActivity extends AppCompatActivity implements View.OnCli
             scaling.setOnClickListener(firstListener);
         }
     };
+
+    @Override
+    public void onPictureInPictureModeChanged(boolean isInPictureInPictureMode, Configuration newConfig) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig);
+        isCrossChecked = isInPictureInPictureMode;
+        if (isInPictureInPictureMode) {
+            playerView.hideController();
+        } else {
+            playerView.showController();
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (isCrossChecked) {
+            player.release();
+            finish();
+        }
+    }
 }

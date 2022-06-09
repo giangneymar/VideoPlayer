@@ -26,7 +26,7 @@ public class VideoFilesActivity extends AppCompatActivity implements SearchView.
     private static VideoFilesAdapter adapter;
     private String folderName;
     private SwipeRefreshLayout swipeRefreshLayout;
-    private static final String MY_PREF = "my pref";
+    public static final String MY_PREF = "my pref";
     private String sortOrder;
 
     @Override
@@ -35,6 +35,11 @@ public class VideoFilesActivity extends AppCompatActivity implements SearchView.
         setContentView(R.layout.activity_video_files);
         init();
         getSupportActionBar().setTitle(folderName);
+
+        SharedPreferences.Editor editor = getSharedPreferences(MY_PREF,MODE_PRIVATE).edit();
+        editor.putString("playlistFolderName",folderName);
+        editor.apply();
+
         showVideos();
         swipeRefreshLayout.setOnRefreshListener(() -> {
             showVideos();
@@ -45,7 +50,7 @@ public class VideoFilesActivity extends AppCompatActivity implements SearchView.
     @SuppressLint("NotifyDataSetChanged")
     private void showVideos() {
         videos = fetchMedia(folderName);
-        adapter = new VideoFilesAdapter(videos, this);
+        adapter = new VideoFilesAdapter(videos, this,0);
         containerVideos.setAdapter(adapter);
         adapter.notifyDataSetChanged();
     }

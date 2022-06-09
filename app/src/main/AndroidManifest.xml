@@ -4,7 +4,10 @@
     package="com.giang.videoplayer">
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.WRITE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <application
         android:allowBackup="true"
@@ -18,8 +21,11 @@
         tools:targetApi="31">
         <activity
             android:name=".VideoPlayerActivity"
-            android:configChanges="orientation|screenSize|layoutDirection"
-            android:exported="false" />
+            android:configChanges="orientation|screenSize|layoutDirection|screenLayout|smallestScreenSize|keyboardHidden|uiMode"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true" />
         <activity
             android:name=".VideoFilesActivity"
             android:parentActivityName=".MainActivity"
